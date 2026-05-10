@@ -143,6 +143,8 @@ async function fetchFromMWeibo(videoId: string): Promise<VideoInfo> {
 async function fetchFromH5Video(videoId: string, originalUrl: string): Promise<VideoInfo> {
   const apiUrl = 'https://h5.video.weibo.com/api/component'
 
+  console.log('fetchFromH5Video called with:', { videoId, originalUrl })
+
   const response = await axios.post(
     apiUrl,
     `data=${encodeURIComponent(JSON.stringify({
@@ -159,6 +161,7 @@ async function fetchFromH5Video(videoId: string, originalUrl: string): Promise<V
   )
 
   const data = response.data
+  console.log('H5 API response:', JSON.stringify(data).substring(0, 500))
 
   if (!data?.data?.Component_Play_Playinfo) {
     throw new Error('无法获取视频信息')
