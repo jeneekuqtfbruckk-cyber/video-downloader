@@ -41,7 +41,7 @@ export default function Home() {
     if (url.includes('bilibili.com') || url.includes('b23.tv')) return 'bilibili'
     if (url.includes('youtube.com') || url.includes('youtu.be')) return 'youtube'
     if (url.includes('xiaohongshu.com') || url.includes('xhslink.com')) return 'xiaohongshu'
-    if (url.includes('weibo.com')) return 'weibo'
+    if (url.includes('weibo.com') || url.includes('weibo.cn')) return 'weibo'
     return null
   }
 
