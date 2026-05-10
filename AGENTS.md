@@ -95,17 +95,6 @@ export interface Parser {
 
 **已知限制**：抖音、快手、小红书、微博的反爬虫机制较强，简单的 HTTP 请求无法获取真实视频地址。如需支持这些平台，需要使用无头浏览器（如 Puppeteer 或 Playwright）来渲染页面。
 
-## OpenCode 配置注意事项
-
-**配置文件位置**：
-- 项目配置：`D:\Xcode\20260503_去水印\opencode.json`
-- 全局配置：`C:\Users\Redme_H1K3\.config\opencode\opencode.json`
-
-**重要教训**：
-- JSON 格式必须严格合法（逗号、括号、引号必须匹配）
-- 修改配置前必须备份，错误的 JSON 会导致 OpenCode 无法启动
-- chrome-devtools-mcp 需要 `--slim --no-optional-methods` 参数才能正常工作
-
 ## Skills
 
 Available in `.opencode/skills/`:
@@ -130,3 +119,14 @@ Available in `.opencode/skills/`:
 |-----|----------|------|
 | `chrome-devtools` | 项目 + 全局 | 浏览器操控，需 `--slim --no-optional-methods` 参数 |
 | `brave-search` | 仅全局 | Brave 搜索引擎，远程 MCP |
+
+## OpenCode 配置注意事项
+
+**配置文件位置**：
+- 项目配置：`D:\Xcode\20260503_去水印\opencode.json`
+- 全局配置：`C:\Users\Redme_H1K3\.config\opencode\opencode.json`
+
+**重要教训**：
+- JSON 格式必须严格合法（逗号、括号、引号必须匹配）
+- 修改配置前必须备份，错误的 JSON 会导致 OpenCode 无法启动
+- chrome-devtools-mcp 需要 `--slim --no-optional-methods` 参数才能正常工作

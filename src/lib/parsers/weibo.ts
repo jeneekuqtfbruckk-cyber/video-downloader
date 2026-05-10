@@ -17,21 +17,27 @@ const HEADERS = {
   'Content-Type': 'application/x-www-form-urlencoded'
 }
 
-async function resolveUrl(url: string): Promise<string> {
+function extractVideoIdFromUrl(url: string): string {
   try {
-    const response = await axios.get(url, {
-      headers: HEADERS,
-      maxRedirects: 5,
-      timeout: 10000
-    })
-    return response.request?.res?.responseUrl || response.config?.url || url
+    const urlObj = new URL(url)
+    // 优先从 fid 参数提取
+    const fid = urlObj.searchParams.get('fid')
+    if (fid) return fid
+    // 从路径提取最后一段
+    const pathParts = urlObj.pathname.split('/').filter(Boolean)
+    if (pathParts.length > 0) return pathParts[pathParts.length - 1]
   } catch {
-    return url
+    // URL 解析失败，继续用正则
   }
+  return ''
 }
 
 async function extractVideoId(url: string): Promise<string> {
   // 先尝试直接从URL提取
+  const directId = extractVideoIdFromUrl(url)
+  if (directId) return directId
+
+  // 用正则匹配
   for (const pattern of PATTERNS) {
     const match = url.match(pattern)
     if (match) {
@@ -39,20 +45,53 @@ async function extractVideoId(url: string): Promise<string> {
     }
   }
 
-  // 如果直接匹配失败，尝试解析重定向
-  const resolvedUrl = await resolveUrl(url)
+  // 尝试解析重定向
+  try {
+    const response = await axios.get(url, {
+      headers: HEADERS,
+      maxRedirects: 5,
+      timeout: 10000,
+      validateStatus: (status) => status < 400
+    })
+    const resolvedUrl = response.request?.res?.responseUrl || response.config?.url || url
+    const resolvedId = extractVideoIdFromUrl(resolvedUrl)
+    if (resolvedId) return resolvedId
 
-  for (const pattern of PATTERNS) {
-    const match = resolvedUrl.match(pattern)
-    if (match) {
-      return match[match.length - 1]
+    for (const pattern of PATTERNS) {
+      const match = resolvedUrl.match(pattern)
+      if (match) {
+        return match[match.length - 1]
+      }
     }
+  } catch {
+    // 重定向解析失败
   }
 
   throw new Error('无法提取视频ID')
 }
 
-// 方式1: 使用移动端API
+function getResolutionScore(url: string): number {
+  const match = url.match(/template=(\d+)x(\d+)/)
+  if (match) {
+    return parseInt(match[1]) * parseInt(match[2])
+  }
+  // 尝试从 key 中提取分辨率（如 1080P）
+  const pMatch = url.match(/(\d+)P/i)
+  if (pMatch) {
+    return parseInt(pMatch[1])
+  }
+  return 0
+}
+
+function selectBestUrl(urls: Record<string, string>): string | null {
+  if (!urls || Object.keys(urls).length === 0) return null
+
+  const entries = Object.entries(urls)
+  entries.sort((a, b) => getResolutionScore(b[1]) - getResolutionScore(a[1]))
+
+  return entries[0][1]
+}
+
 async function fetchFromMWeibo(videoId: string): Promise<VideoInfo> {
   const apiUrl = `https://m.weibo.cn/statuses/show?id=${videoId}`
 
@@ -67,37 +106,33 @@ async function fetchFromMWeibo(videoId: string): Promise<VideoInfo> {
 
   const data = response.data
 
-  if (!data || !data.data) {
+  if (!data?.data?.page_info) {
     throw new Error('无法获取视频信息')
   }
 
   const status = data.data
   const pageInfo = status.page_info
 
-  if (!pageInfo || pageInfo.type !== 'video') {
+  if (pageInfo.type !== 'video') {
     throw new Error('该微博不是视频类型')
   }
 
-  // 获取视频地址 - 优先选择高清
-  const urls = pageInfo.urls || {}
-  const sortedUrls = Object.entries(urls)
-    .map(([key, value]) => {
-      const match = key.match(/(\d+)P/)
-      const resolution = match ? parseInt(match[1]) : 0
-      return { key, url: value as string, resolution }
-    })
-    .sort((a, b) => b.resolution - a.resolution)
-
-  const videoUrl = sortedUrls.length > 0
-    ? sortedUrls[0].url
-    : pageInfo.media_info?.stream_url
+  // 优先从 urls 中选择最佳质量
+  const videoUrl = selectBestUrl(pageInfo.urls) ||
+    pageInfo.media_info?.stream_url
 
   if (!videoUrl) {
     throw new Error('无法获取视频地址')
   }
 
+  // 提取标题：优先 title/page_title，否则从 text 中提取
+  const title = pageInfo.title ||
+    pageInfo.page_title ||
+    status.text?.replace(/<[^>]+>/g, '').substring(0, 100) ||
+    '微博视频'
+
   return {
-    title: status.text?.replace(/<[^>]+>/g, '').substring(0, 100) || '微博视频',
+    title,
     url: videoUrl,
     cover: pageInfo.page_pic?.url || '',
     author: status.user?.screen_name || '',
@@ -105,11 +140,11 @@ async function fetchFromMWeibo(videoId: string): Promise<VideoInfo> {
   }
 }
 
-// 方式2: 使用H5视频API
-async function fetchFromH5Video(videoId: string, url: string): Promise<VideoInfo> {
+async function fetchFromH5Video(videoId: string, originalUrl: string): Promise<VideoInfo> {
   const apiUrl = 'https://h5.video.weibo.com/api/component'
 
-  const response = await axios.post(apiUrl,
+  const response = await axios.post(
+    apiUrl,
     `data=${encodeURIComponent(JSON.stringify({
       'Component_Play_Playinfo': { 'oid': videoId }
     }))}`,
@@ -117,7 +152,7 @@ async function fetchFromH5Video(videoId: string, url: string): Promise<VideoInfo
       params: { page: `/show/${videoId}` },
       headers: {
         ...HEADERS,
-        'Referer': url
+        'Referer': originalUrl
       },
       timeout: 10000
     }
@@ -125,38 +160,29 @@ async function fetchFromH5Video(videoId: string, url: string): Promise<VideoInfo
 
   const data = response.data
 
-  if (!data || !data.data) {
+  if (!data?.data?.Component_Play_Playinfo) {
     throw new Error('无法获取视频信息')
   }
 
   const playInfo = data.data.Component_Play_Playinfo
 
-  if (!playInfo || !playInfo.urls) {
-    throw new Error('无法获取视频信息')
+  if (!playInfo.urls && !playInfo.stream_url) {
+    throw new Error('无法获取视频地址')
   }
 
-  // 获取视频地址 - 优先选择高清
-  const urls = playInfo.urls
-  const sortedUrls = Object.entries(urls)
-    .map(([key, value]) => {
-      const match = key.match(/(\d+)P/)
-      const resolution = match ? parseInt(match[1]) : 0
-      return { key, url: value as string, resolution }
-    })
-    .sort((a, b) => b.resolution - a.resolution)
-
-  let videoUrl = sortedUrls.length > 0
-    ? sortedUrls[0].url
-    : playInfo.stream_url
-
-  if (videoUrl && !videoUrl.startsWith('http')) {
-    videoUrl = 'https:' + videoUrl
-  }
+  // 选择最佳质量的 URL
+  let videoUrl = selectBestUrl(playInfo.urls) || playInfo.stream_url
 
   if (!videoUrl) {
     throw new Error('无法获取视频地址')
   }
 
+  // 补全协议头
+  if (!videoUrl.startsWith('http')) {
+    videoUrl = 'https:' + videoUrl
+  }
+
+  // 封面 URL 补全协议头
   let coverUrl = playInfo.cover_image || ''
   if (coverUrl && !coverUrl.startsWith('http')) {
     coverUrl = 'https:' + coverUrl
@@ -171,12 +197,12 @@ async function fetchFromH5Video(videoId: string, url: string): Promise<VideoInfo
   }
 }
 
-async function fetchVideoInfo(videoId: string, url: string): Promise<VideoInfo> {
-  // 判断使用哪种API
-  // 如果videoId包含':'，使用H5视频API，否则使用移动端API
+async function fetchVideoInfo(videoId: string, originalUrl: string): Promise<VideoInfo> {
+  // 如果 videoId 包含 ':'，使用 H5 视频 API
   if (videoId.includes(':')) {
-    return fetchFromH5Video(videoId, url)
+    return fetchFromH5Video(videoId, originalUrl)
   }
+  // 否则使用移动端 API
   return fetchFromMWeibo(videoId)
 }
 
