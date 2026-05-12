@@ -40,7 +40,8 @@ export async function setCachedVideo(
 
 function cleanExpiredCache(): void {
   const now = Date.now()
-  for (const [key, value] of memoryCache.entries()) {
+  const entries = Array.from(memoryCache.entries())
+  for (const [key, value] of entries) {
     if (now - value.timestamp > CACHE_TTL) {
       memoryCache.delete(key)
     }

@@ -50,7 +50,7 @@ async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
 
       // 提取ytInitialPlayerResponse
       const playerMatch = html.match(
-        /ytInitialPlayerResponse\s*=\s*({.*?});/s
+        /ytInitialPlayerResponse\s*=\s*({[\s\S]*?});/
       )
 
       if (playerMatch) {

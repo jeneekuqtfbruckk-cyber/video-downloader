@@ -80,7 +80,7 @@ async function fetchVideoInfo(noteId: string): Promise<VideoInfo> {
 
   // 提取 __INITIAL_STATE__ 数据
   const stateMatch = html.match(
-    /window\.__INITIAL_STATE__\s*=\s*(.*?)<\/script>/s
+    /window\.__INITIAL_STATE__\s*=\s*([\s\S]*?)<\/script>/
   )
 
   if (!stateMatch) {

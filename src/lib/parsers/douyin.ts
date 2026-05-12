@@ -1,20 +1,32 @@
 import axios from 'axios'
 import { VideoInfo, Parser } from '@/types'
+import { generateABogus, generateMsToken, generateTtwid } from './douyin-sign'
 
 const PATTERNS = [
   /douyin\.com\/video\/(\d+)/,
   /v\.douyin\.com\/(\w+)/,
-  /iesdouyin\.com\/share\/video\/(\d+)/
+  /iesdouyin\.com\/share\/video\/(\d+)/,
+  /douyin\.com\/discover\?modal_id=(\d+)/
 ]
 
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
+
 const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+  'User-Agent': USER_AGENT,
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+  'sec-ch-ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+  'sec-ch-ua-mobile': '?0',
+  'sec-ch-ua-platform': '"Windows"',
+  'Sec-Fetch-Site': 'same-origin',
+  'Sec-Fetch-Mode': 'cors',
+  'Sec-Fetch-Dest': 'empty'
 }
 
 async function resolveUrl(url: string): Promise<string> {
   try {
     const response = await axios.get(url, {
-      headers: HEADERS,
+      headers: { 'User-Agent': USER_AGENT },
       maxRedirects: 0,
       validateStatus: (status) => status === 302 || status === 301
     })
@@ -47,62 +59,57 @@ async function extractVideoId(url: string): Promise<string> {
 }
 
 async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
-  const pageUrl = `https://www.iesdouyin.com/share/video/${videoId}`
+  // 构建API请求URL
+  const apiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?device_platform=webapp&aid=6383&channel=channel_pc_web&aweme_id=${videoId}&pc_client_type=1&version_code=170400&version_name=17.4.0&cookie_enabled=true&screen_width=1920&screen_height=1080&browser_language=zh-CN&browser_platform=Win32&browser_name=Chrome&browser_version=123.0.0.0&browser_online=true&engine_name=Blink&engine_version=123.0.0.0&os_name=Windows&os_version=10&cpu_core_num=16&device_memory=8&platform=PC&downlink=10&effective_type=4g&round_trip_time=50`
 
-  const response = await axios.get(pageUrl, {
-    headers: HEADERS,
+  // 生成签名参数
+  const msToken = generateMsToken()
+  const aBogus = generateABogus(apiUrl, USER_AGENT)
+
+  // 构建完整URL
+  const fullUrl = `${apiUrl}&msToken=${msToken}&a_bogus=${aBogus}`
+
+  // 获取 ttwid
+  let ttwid = ''
+  try {
+    const ttwidData = await generateTtwid(`https://www.douyin.com/video/${videoId}`)
+    ttwid = ttwidData.ttwid
+  } catch (e) {
+    console.warn('获取 ttwid 失败:', e)
+  }
+
+  // 发送请求
+  const headers: Record<string, string> = {
+    ...HEADERS,
+    'Referer': `https://www.douyin.com/video/${videoId}`,
+    'Cookie': `ttwid=${ttwid}; msToken=${msToken};`
+  }
+
+  const response = await axios.get(fullUrl, {
+    headers,
     timeout: 10000
   })
 
-  const html = response.data
-
-  // 提取 window._ROUTER_DATA
-  const routerDataMatch = html.match(
-    /window\._ROUTER_DATA\s*=\s*(.*?)<\/script>/s
-  )
-
-  if (!routerDataMatch) {
-    throw new Error('无法解析页面数据')
+  if (!response.data || !response.data.aweme_detail) {
+    throw new Error('无法获取视频信息')
   }
 
-  let rawData = routerDataMatch[1].trim().replace(/[;\s\n\r]+$/, '')
+  const detail = response.data.aweme_detail
 
-  // 确保是有效的JSON
-  if (!rawData.startsWith('{')) {
-    const jsonStart = rawData.indexOf('{')
-    if (jsonStart !== -1) {
-      rawData = rawData.slice(jsonStart).replace(/[;\s\n\r]+$/, '')
-    }
-  }
-
-  let routerData: any
-  try {
-    routerData = JSON.parse(rawData)
-  } catch {
-    throw new Error('JSON解析失败')
-  }
-
-  // 提取视频详情
-  const videoDetail =
-    routerData?.loaderData?.['video_(id)/page']?.videoInfoRes?.item_list?.[0]
-
-  if (!videoDetail) {
-    throw new Error('无法提取视频信息')
-  }
-
-  const videoUri = videoDetail.video?.play_addr?.uri
+  // 获取无水印视频地址
+  const videoUri = detail.video?.play_addr?.uri
   if (!videoUri) {
     throw new Error('无法获取视频地址')
   }
 
   // 构建无水印下载链接
-  const downloadUrl = `http://www.iesdouyin.com/aweme/v1/play/?video_id=${videoUri}&ratio=1080p&line=0`
+  const downloadUrl = `https://www.douyin.com/aweme/v1/play/?video_id=${videoUri}&ratio=1080p&line=0`
 
   return {
-    title: videoDetail.desc || '抖音视频',
+    title: detail.desc || '抖音视频',
     url: downloadUrl,
-    cover: videoDetail.video?.cover?.url_list?.[0] || '',
-    author: videoDetail.author?.nickname || '',
+    cover: detail.video?.cover?.url_list?.[0] || '',
+    author: detail.author?.nickname || '',
     platform: 'douyin'
   }
 }

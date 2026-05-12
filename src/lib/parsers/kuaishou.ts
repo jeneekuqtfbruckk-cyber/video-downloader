@@ -71,7 +71,7 @@ async function fetchVideoInfo(videoId: string, url: string): Promise<VideoInfo> 
 
   // 提取 window.__APOLLO_STATE__
   const apolloMatch = html.match(
-    /window\.__APOLLO_STATE__\s*=\s*(\{.*?\});/s
+    /window\.__APOLLO_STATE__\s*=\s*(\{[\s\S]*?\});/
   )
 
   if (!apolloMatch) {

@@ -4,6 +4,10 @@ const nextConfig = {
   eslint: {
     dirs: ['src'],
   },
+  webpack: (config) => {
+    config.externals = [...(config.externals || []), 'isolated-vm']
+    return config
+  },
   async headers() {
     return [
       {
