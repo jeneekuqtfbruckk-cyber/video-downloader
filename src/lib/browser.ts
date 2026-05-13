@@ -5,8 +5,8 @@ const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 
 async function loadPlaywright(): Promise<any> {
   try {
-    // 使用 require 而不是 import，避免 Next.js 静态分析
-    const pw = require('playwright-core')
+    // 使用 eval 避免 webpack 静态分析
+    const pw = eval('require')('playwright-core')
     return pw.chromium
   } catch {
     return null
