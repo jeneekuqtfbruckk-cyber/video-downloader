@@ -1,0 +1,41 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "请始终使用中文回复，使用极简模式，不要输出思考过程。"
+  ],
+  "provider": {
+    "xiaomi-mimo": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Xiaomi MiMo",
+      "options": {
+        "baseURL": "https://token-plan-cn.xiaomimimo.com/v1",
+        "apiKey": "tp-c7ot68tlat8zwum072te9hwouaxtug0gwk6txj0430lr4h1c"
+      },
+      "models": {
+        "MiMo-V2.5": {
+          "name": "MiMo V2.5 (多模态，支持图像)",
+          "modalities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text"
+            ]
+          }
+        },
+        "MiMo-V2.5-Pro": {
+          "name": "MiMo V2.5 Pro (纯文本，复杂编码)"
+        }
+      }
+    }
+  },
+  "mcp": {
+    "playwright": {
+      "type": "local",
+      "command": ["npx", "-y", "@playwright/mcp@latest"],
+      "timeout": 30000,
+      "enabled": true
+    }
+  }
+}

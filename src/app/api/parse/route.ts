@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { parseVideo, detectPlatform } from '@/lib/parsers'
 import { getCachedVideo, setCachedVideo } from '@/lib/cache'
+import { checkRateLimit } from '@/lib/rate-limit'
 import { ErrorCode } from '@/types'
 
 const RequestSchema = z.object({
@@ -26,8 +27,37 @@ function normalizeUrl(url: string): string {
   return normalized
 }
 
+function getClientIp(request: NextRequest): string {
+  return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    request.headers.get('x-real-ip') ||
+    'unknown'
+}
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
+
+  // 速率限制检查
+  const clientIp = getClientIp(request)
+  const { success: rateLimitOk, remaining } = checkRateLimit(clientIp)
+
+  if (!rateLimitOk) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: ErrorCode.RATE_LIMIT_EXCEEDED,
+          message: '请求过于频繁，请稍后再试'
+        }
+      },
+      {
+        status: 429,
+        headers: {
+          'X-RateLimit-Remaining': '0',
+          'Retry-After': '60'
+        }
+      }
+    )
+  }
 
   try {
     const body = await request.json()
@@ -52,15 +82,22 @@ export async function POST(request: NextRequest) {
     // 检查缓存
     const cached = await getCachedVideo(url)
     if (cached) {
-      return NextResponse.json({
-        success: true,
-        data: cached,
-        meta: {
-          timestamp: new Date().toISOString(),
-          parseTime: Date.now() - startTime,
-          fromCache: true
+      return NextResponse.json(
+        {
+          success: true,
+          data: cached,
+          meta: {
+            timestamp: new Date().toISOString(),
+            parseTime: Date.now() - startTime,
+            fromCache: true
+          }
+        },
+        {
+          headers: {
+            'X-RateLimit-Remaining': String(remaining)
+          }
         }
-      })
+      )
     }
 
     // 解析视频
@@ -69,15 +106,22 @@ export async function POST(request: NextRequest) {
     // 存入缓存
     await setCachedVideo(url, videoInfo)
 
-    return NextResponse.json({
-      success: true,
-      data: videoInfo,
-      meta: {
-        timestamp: new Date().toISOString(),
-        parseTime: Date.now() - startTime,
-        fromCache: false
+    return NextResponse.json(
+      {
+        success: true,
+        data: videoInfo,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parseTime: Date.now() - startTime,
+          fromCache: false
+        }
+      },
+      {
+        headers: {
+          'X-RateLimit-Remaining': String(remaining)
+        }
       }
-    })
+    )
   } catch (error) {
     // 处理Zod验证错误
     if (error instanceof z.ZodError) {

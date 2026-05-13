@@ -8,7 +8,7 @@ const PATTERNS = [
 ]
 
 const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
 }
 
 async function resolveUrl(url: string): Promise<string> {
@@ -24,11 +24,20 @@ async function resolveUrl(url: string): Promise<string> {
   }
 }
 
-async function extractNoteId(url: string): Promise<string> {
+async function extractNoteId(url: string): Promise<{ noteId: string; xsecToken: string }> {
+  // 提取 xsec_token 参数
+  let xsecToken = ''
+  try {
+    const urlObj = new URL(url)
+    xsecToken = urlObj.searchParams.get('xsec_token') || ''
+  } catch {
+    // 继续
+  }
+
   // 先尝试直接从URL提取
   for (const pattern of PATTERNS) {
     const match = url.match(pattern)
-    if (match && match[1]) return match[1]
+    if (match && match[1]) return { noteId: match[1], xsecToken }
   }
 
   // 如果直接匹配失败，尝试解析重定向
@@ -36,44 +45,31 @@ async function extractNoteId(url: string): Promise<string> {
 
   for (const pattern of PATTERNS) {
     const match = resolvedUrl.match(pattern)
-    if (match && match[1]) return match[1]
+    if (match && match[1]) {
+      // 从重定向 URL 中提取 xsec_token
+      try {
+        const urlObj = new URL(resolvedUrl)
+        xsecToken = urlObj.searchParams.get('xsec_token') || xsecToken
+      } catch {
+        // 继续
+      }
+      return { noteId: match[1], xsecToken }
+    }
   }
 
   throw new Error('无法提取笔记ID')
 }
 
-// 递归搜索字典中的key
-function searchDictByKey(obj: any, key: string): any[] {
-  const results: any[] = []
-
-  if (typeof obj !== 'object' || obj === null) {
-    return results
+async function fetchVideoInfo(noteId: string, xsecToken: string): Promise<VideoInfo> {
+  // 构建页面 URL，包含 xsec_token 参数
+  let pageUrl = `https://www.xiaohongshu.com/explore/${noteId}`
+  if (xsecToken) {
+    pageUrl += `?xsec_token=${encodeURIComponent(xsecToken)}&xsec_source=`
   }
-
-  if (Array.isArray(obj)) {
-    for (const item of obj) {
-      results.push(...searchDictByKey(item, key))
-    }
-    return results
-  }
-
-  if (obj[key] !== undefined) {
-    results.push(obj[key])
-  }
-
-  for (const value of Object.values(obj)) {
-    results.push(...searchDictByKey(value, key))
-  }
-
-  return results
-}
-
-async function fetchVideoInfo(noteId: string): Promise<VideoInfo> {
-  const pageUrl = `https://www.xiaohongshu.com/explore/${noteId}`
 
   const response = await axios.get(pageUrl, {
     headers: HEADERS,
-    timeout: 10000
+    timeout: 15000
   })
 
   const html = response.data
@@ -104,7 +100,6 @@ async function fetchVideoInfo(noteId: string): Promise<VideoInfo> {
   }
 
   // 尝试从 noteDetailMap 中获取笔记详情
-  // key 可能是 noteId，也可能是 "null"（SSR 渲染时）
   let noteDetail = noteDetailMap[noteId]?.note
 
   // 如果没有找到，尝试从第一个有效的 key 获取
@@ -129,27 +124,20 @@ async function fetchVideoInfo(noteId: string): Promise<VideoInfo> {
     throw new Error('该笔记不是视频类型')
   }
 
-  // 递归搜索masterUrl
+  // 从 video.media.stream 中提取视频 URL
   let videoUrl = ''
-  const masterUrls = searchDictByKey(state, 'masterUrl')
-  if (masterUrls.length > 0) {
-    videoUrl = masterUrls[0]
+  
+  // 优先使用 h264
+  if (video.media?.stream?.h264?.[0]?.masterUrl) {
+    videoUrl = video.media.stream.h264[0].masterUrl
   }
-
-  // 如果没找到，尝试backupUrls
-  if (!videoUrl) {
-    const backupUrls = searchDictByKey(state, 'backupUrls')
-    if (backupUrls.length > 0) {
-      const urls = backupUrls[0]
-      videoUrl = Array.isArray(urls) ? urls[0] : urls
-    }
+  // 然后使用 h265
+  else if (video.media?.stream?.h265?.[0]?.masterUrl) {
+    videoUrl = video.media.stream.h265[0].masterUrl
   }
-
-  // 如果还没找到，尝试直接从video对象获取
-  if (!videoUrl) {
-    videoUrl = video.media?.stream?.h264?.[0]?.masterUrl ||
-      video.media?.stream?.h265?.[0]?.masterUrl ||
-      video.url?.replace(/\\u002F/g, '/')
+  // 尝试从 backupUrls 获取
+  else if (video.media?.stream?.h264?.[0]?.backupUrls?.[0]) {
+    videoUrl = video.media.stream.h264[0].backupUrls[0]
   }
 
   if (!videoUrl) {
@@ -157,23 +145,18 @@ async function fetchVideoInfo(noteId: string): Promise<VideoInfo> {
   }
 
   // 获取标题
-  const titleResults = searchDictByKey(state, 'title')
-  const descResults = searchDictByKey(state, 'desc')
-  const videoTitle = (titleResults.length > 0 ? titleResults[0] : null) ||
-    (descResults.length > 0 ? descResults[0]?.substring(0, 50) : null) ||
-    '小红书视频'
+  const title = noteDetail.title || noteDetail.desc?.substring(0, 50) || '小红书视频'
 
   // 获取封面
   let coverUrl = ''
-  try {
-    coverUrl = noteDetail.imageList?.[0]?.urlDefault ||
-      noteDetail.imageList?.[0]?.url?.replace(/\\u002F/g, '/') || ''
-  } catch {
-    // 忽略封面获取失败
+  if (noteDetail.imageList?.[0]?.urlDefault) {
+    coverUrl = noteDetail.imageList[0].urlDefault
+  } else if (noteDetail.imageList?.[0]?.url) {
+    coverUrl = noteDetail.imageList[0].url.replace(/\\u002F/g, '/')
   }
 
   return {
-    title: videoTitle,
+    title,
     url: videoUrl,
     cover: coverUrl,
     author: noteDetail.user?.nickname || '',
@@ -185,7 +168,7 @@ export const parseXiaohongshu: Parser = {
   name: 'xiaohongshu',
   patterns: PATTERNS,
   parse: async (url: string) => {
-    const noteId = await extractNoteId(url)
-    return fetchVideoInfo(noteId)
+    const { noteId, xsecToken } = await extractNoteId(url)
+    return fetchVideoInfo(noteId, xsecToken)
   }
 }

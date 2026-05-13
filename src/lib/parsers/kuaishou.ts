@@ -4,12 +4,14 @@ import { VideoInfo, Parser } from '@/types'
 const PATTERNS = [
   /kuaishou\.com\/short-video\/(\w+)/,
   /v\.kuaishou\.com\/(\w+)/,
-  /gifshow\.com\/(\w+)/
+  /gifshow\.com\/(\w+)/,
+  /kuaishou\.com\/fw\/photo\/(\w+)/
 ]
 
 const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
-  'Referer': 'https://v.kuaishou.com/'
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+  'Referer': 'https://www.kuaishou.com/',
+  'Cookie': 'did=web_d0a1b2c3d4e5f6'
 }
 
 async function resolveUrl(url: string): Promise<string> {
@@ -62,67 +64,73 @@ async function extractVideoId(url: string): Promise<string> {
 }
 
 async function fetchVideoInfo(videoId: string, url: string): Promise<VideoInfo> {
-  const response = await axios.get(url, {
-    headers: HEADERS,
-    timeout: 10000
+  // 使用 GraphQL API 获取视频数据
+  const apiUrl = 'https://www.kuaishou.com/graphql'
+  
+  const query = {
+    operationName: 'visionVideoDetailPhoto',
+    variables: {
+      photoId: videoId,
+      page: 'detail'
+    },
+    query: `query visionVideoDetailPhoto($photoId: String, $type: String, $page: String) {
+      visionVideoDetailPhoto(photoId: $photoId, type: $type, page: $page) {
+        photo {
+          id
+          duration
+          caption
+          coverUrl
+          photoUrl
+          coverUrls
+          photoH265Url
+          manifest
+          manifestH265
+          videoResource
+          timestamp
+        }
+        author {
+          id
+          name
+          headerUrl
+          following
+        }
+      }
+    }`
+  }
+  
+  const response = await axios.post(apiUrl, query, {
+    headers: {
+      ...HEADERS,
+      'Content-Type': 'application/json',
+      'Referer': `https://www.kuaishou.com/short-video/${videoId}`
+    },
+    timeout: 15000
   })
-
-  const html = response.data
-
-  // 提取 window.__APOLLO_STATE__
-  const apolloMatch = html.match(
-    /window\.__APOLLO_STATE__\s*=\s*(\{[\s\S]*?\});/
-  )
-
-  if (!apolloMatch) {
-    throw new Error('无法解析页面数据')
+  
+  const data = response.data
+  
+  if (!data?.data?.visionVideoDetailPhoto?.photo) {
+    throw new Error('无法获取视频信息')
   }
-
-  let apolloData: any
-  try {
-    apolloData = JSON.parse(apolloMatch[1])
-  } catch {
-    throw new Error('JSON解析失败')
-  }
-
-  const client = apolloData?.defaultClient
-  if (!client) {
-    throw new Error('无法获取客户端数据')
-  }
-
-  // 查找视频详情
-  let photoData: any = null
-  for (const [key, value] of Object.entries(client)) {
-    if (
-      typeof value === 'object' &&
-      value !== null &&
-      (value as any).__typename === 'VisionVideoDetailPhoto'
-    ) {
-      photoData = value
-      break
-    }
-  }
-
-  if (!photoData) {
-    throw new Error('无法提取视频信息')
-  }
-
+  
+  const photo = data.data.visionVideoDetailPhoto.photo
+  const author = data.data.visionVideoDetailPhoto.author
+  
   // 选择最佳视频源
   const candidates: Array<{ codec: string; url: string; priority: number }> = []
-
-  if (photoData.photoH265Url) {
-    candidates.push({ codec: 'hevc', url: photoData.photoH265Url, priority: 2 })
+  
+  if (photo.photoH265Url) {
+    candidates.push({ codec: 'hevc', url: photo.photoH265Url, priority: 2 })
   }
-  if (photoData.photoUrl) {
-    candidates.push({ codec: 'h264', url: photoData.photoUrl, priority: 1 })
+  if (photo.photoUrl) {
+    candidates.push({ codec: 'h264', url: photo.photoUrl, priority: 1 })
   }
-
-  // 从videoResource中提取
-  const videoResource = photoData.videoResource
-  if (videoResource?.json) {
+  
+  // 从 videoResource 中提取
+  if (photo.videoResource?.json) {
     const codecs = ['hevc', 'h264']
     for (const codec of codecs) {
-      const codecData = videoResource.json[codec]
+      const codecData = photo.videoResource.json[codec]
       if (codecData?.adaptationSet) {
         for (const adaptation of codecData.adaptationSet) {
           if (adaptation?.representation) {
@@ -140,32 +148,19 @@ async function fetchVideoInfo(videoId: string, url: string): Promise<VideoInfo> 
       }
     }
   }
-
+  
   // 按优先级排序（hevc > h264）
   candidates.sort((a, b) => b.priority - a.priority)
-
+  
   if (candidates.length === 0 || !candidates[0].url) {
     throw new Error('无法获取视频下载地址')
   }
-
-  // 提取封面
-  let coverUrl = ''
-  const searchForCover = (obj: any): string => {
-    if (typeof obj !== 'object' || obj === null) return ''
-    if (obj.coverUrl && typeof obj.coverUrl === 'string') return obj.coverUrl
-    for (const value of Object.values(obj)) {
-      const result = searchForCover(value)
-      if (result) return result
-    }
-    return ''
-  }
-  coverUrl = searchForCover(apolloData)
-
+  
   return {
-    title: photoData.caption || '快手视频',
+    title: photo.caption || '快手视频',
     url: candidates[0].url,
-    cover: coverUrl,
-    author: photoData.userName || '',
+    cover: photo.coverUrl || '',
+    author: author?.name || '',
     platform: 'kuaishou'
   }
 }
