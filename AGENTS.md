@@ -100,7 +100,7 @@ export interface Parser {
 | B站 | ✅ 可用 | 直接 API 调用（api.bilibili.com） |
 | YouTube | ⚠️ 部分可用 | oEmbed + ytInitialPlayerResponse，可能被反爬 |
 | 抖音 | ⚠️ 部分可用 | 依赖 isolated-vm 执行签名算法 |
-| 快手 | ✅ 可用 | GraphQL API（visionVideoDetailPhoto） |
+| 快手 | ⚠️ 部分可用 | GraphQL API（visionVideoDetail），需浏览器环境或有效 cookie |
 | 小红书 | ⚠️ 部分可用 | SSR 数据格式不稳定，需要 xsec_token |
 | 微博 | ⚠️ 部分可用 | 两套 API，videoId 格式不统一 |
 
@@ -131,8 +131,9 @@ export interface Parser {
 - 签名算法（a_bogus/x_bogus）可能随抖音更新失效
 
 ### 快手
-- 使用 GraphQL API（visionVideoDetailPhoto）获取视频数据
+- 使用 GraphQL API（visionVideoDetail）获取视频数据
 - 需要 Mac Chrome 或 Firefox User-Agent（Windows Chrome 被反爬）
+- 服务器端请求可能被反爬阻止，需要浏览器环境或有效 cookie
 
 ### 小红书
 - SSR 数据格式 `__INITIAL_STATE__` 结构频繁变化

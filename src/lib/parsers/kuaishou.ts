@@ -11,7 +11,7 @@ const PATTERNS = [
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
   'Referer': 'https://www.kuaishou.com/',
-  'Cookie': 'did=web_d0a1b2c3d4e5f6'
+  'Cookie': 'did=web_fcb2a76122dd4b91a425960c4d4b0c75; didv=1778608243000; kwpsecproductname=kuaishou-vision; kwfv1=PnGU+9+Y8008S+nH0U+0mjPf8fP08f+98f+nLlwnrIP9P78/DM+/cI8eWhPnHM+/GI8emj+BHF+nPEwnrMGfL98fGF+BrI+eD7+n+0webYP/pDw/G9PeqUwBrM8eLEG980GAYDwBrFPecA+/+D8Bbf+0PE8eL7+nb0G9rIGAr98nzYw/+Y+ncMPBc98emSP/SDG9PU+ezj+nrF+/qI+/pYwZ==; kwssectoken=PjpXPEb9xVMN9izpoAqQbmm0LECtr4eObTMzTHM8nSwJYGJPZ91bLqxmLC4DK0p5; kwscode=KOjsMWLIm+kO/f7MlE6gmsc5hgQ9Br0fj4K5HU9niqALhwX0aznIIsT2htE2m5n/Onjt7v06ZYgh36NFGg9M/y51lPjeCMuxwppRR2akX/lUtie95KRbi2o/Spdwan26HC778sTPBBgHKfS4vhjzFE8cqlDK4OYKIc4ztQA9uVsBzh3rZsWRHJ9u+Ts4Qf+WScI'
 }
 
 async function resolveUrl(url: string): Promise<string> {
@@ -68,13 +68,13 @@ async function fetchVideoInfo(videoId: string, url: string): Promise<VideoInfo> 
   const apiUrl = 'https://www.kuaishou.com/graphql'
   
   const query = {
-    operationName: 'visionVideoDetailPhoto',
+    operationName: 'visionVideoDetail',
     variables: {
       photoId: videoId,
       page: 'detail'
     },
-    query: `query visionVideoDetailPhoto($photoId: String, $type: String, $page: String) {
-      visionVideoDetailPhoto(photoId: $photoId, type: $type, page: $page) {
+    query: `query visionVideoDetail($photoId: String, $type: String, $page: String) {
+      visionVideoDetail(photoId: $photoId, type: $type, page: $page) {
         photo {
           id
           duration
@@ -109,12 +109,12 @@ async function fetchVideoInfo(videoId: string, url: string): Promise<VideoInfo> 
   
   const data = response.data
   
-  if (!data?.data?.visionVideoDetailPhoto?.photo) {
+  if (!data?.data?.visionVideoDetail?.photo) {
     throw new Error('无法获取视频信息')
   }
   
-  const photo = data.data.visionVideoDetailPhoto.photo
-  const author = data.data.visionVideoDetailPhoto.author
+  const photo = data.data.visionVideoDetail.photo
+  const author = data.data.visionVideoDetail.author
   
   // 选择最佳视频源
   const candidates: Array<{ codec: string; url: string; priority: number }> = []

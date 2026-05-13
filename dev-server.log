@@ -1,0 +1,70 @@
+
+> video-downloader@0.1.0 dev
+> next dev
+
+  ▲ Next.js 14.2.5
+  - Local:        http://localhost:3000
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 3.5s
+ ○ Compiling / ...
+ ✓ Compiled / in 4.4s (458 modules)
+ GET / 200 in 4827ms
+ ✓ Compiled in 405ms (236 modules)
+ ○ Compiling /api/parse ...
+ ✓ Compiled /api/parse in 1356ms (405 modules)
+ POST /api/parse 500 in 3946ms
+ GET / 200 in 226ms
+ POST /api/parse 500 in 2314ms
+ POST /api/parse 200 in 2098ms
+ POST /api/parse 500 in 2807ms
+ POST /api/parse 200 in 2091ms
+ POST /api/parse 500 in 2841ms
+ POST /api/parse 500 in 6817ms
+ GET / 200 in 40ms
+ POST /api/parse 500 in 3430ms
+ POST /api/parse 500 in 2956ms
+ POST /api/parse 500 in 6527ms
+ ✓ Compiled in 882ms (405 modules)
+ POST /api/parse 500 in 5676ms
+ ✓ Compiled in 541ms (405 modules)
+noteDetailMap keys: [ 'null' ]
+noteDetail by noteId: not found
+Trying other keys: [ 'null' ]
+Key "null": has data
+noteDetailMap: {
+  "null": {
+    "comments": {
+      "list": [],
+      "cursor": "",
+      "hasMore": true,
+      "loading": false,
+      "firstRequestFinish": false
+    },
+    "currentTime": 0,
+    "note": {}
+  }
+}
+ POST /api/parse 500 in 4145ms
+noteDetailMap keys: [ 'null' ]
+noteDetail by noteId: not found
+Trying other keys: [ 'null' ]
+Key "null": has data
+noteDetailMap: {
+  "null": {
+    "comments": {
+      "list": [],
+      "cursor": "",
+      "hasMore": true,
+      "loading": false,
+      "firstRequestFinish": false
+    },
+    "currentTime": 0,
+    "note": {}
+  }
+}
+ POST /api/parse 500 in 4642ms
+ POST /api/parse 200 in 2580ms
+ POST /api/parse 200 in 1802ms
+ ✓ Compiled in 692ms (405 modules)
