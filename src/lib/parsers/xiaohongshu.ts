@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { VideoInfo, Parser } from '@/types'
+import { fetchWithBrowser } from '@/lib/browser'
 
 const PATTERNS = [
   /xiaohongshu\.com\/explore\/(\w+)/,
@@ -25,7 +26,6 @@ async function resolveUrl(url: string): Promise<string> {
 }
 
 async function extractNoteId(url: string): Promise<{ noteId: string; xsecToken: string }> {
-  // 提取 xsec_token 参数
   let xsecToken = ''
   try {
     const urlObj = new URL(url)
@@ -34,19 +34,16 @@ async function extractNoteId(url: string): Promise<{ noteId: string; xsecToken: 
     // 继续
   }
 
-  // 先尝试直接从URL提取
   for (const pattern of PATTERNS) {
     const match = url.match(pattern)
     if (match && match[1]) return { noteId: match[1], xsecToken }
   }
 
-  // 如果直接匹配失败，尝试解析重定向
   const resolvedUrl = await resolveUrl(url)
 
   for (const pattern of PATTERNS) {
     const match = resolvedUrl.match(pattern)
     if (match && match[1]) {
-      // 从重定向 URL 中提取 xsec_token
       try {
         const urlObj = new URL(resolvedUrl)
         xsecToken = urlObj.searchParams.get('xsec_token') || xsecToken
@@ -60,49 +57,15 @@ async function extractNoteId(url: string): Promise<{ noteId: string; xsecToken: 
   throw new Error('无法提取笔记ID')
 }
 
-async function fetchVideoInfo(noteId: string, xsecToken: string): Promise<VideoInfo> {
-  // 构建页面 URL，包含 xsec_token 参数
-  let pageUrl = `https://www.xiaohongshu.com/explore/${noteId}`
-  if (xsecToken) {
-    pageUrl += `?xsec_token=${encodeURIComponent(xsecToken)}&xsec_source=`
-  }
-
-  const response = await axios.get(pageUrl, {
-    headers: HEADERS,
-    timeout: 15000
-  })
-
-  const html = response.data
-
-  // 提取 __INITIAL_STATE__ 数据
-  const stateMatch = html.match(
-    /window\.__INITIAL_STATE__\s*=\s*([\s\S]*?)<\/script>/
-  )
-
-  if (!stateMatch) {
-    throw new Error('无法解析页面数据')
-  }
-
-  let rawData = stateMatch[1].trim().replace(/undefined/g, 'null')
-
-  let state: any
-  try {
-    state = JSON.parse(rawData)
-  } catch {
-    throw new Error('JSON解析失败')
-  }
-
-  // 提取笔记详情
+function extractVideoFromState(state: any, noteId: string): VideoInfo {
   const noteDetailMap = state?.note?.noteDetailMap
 
   if (!noteDetailMap) {
     throw new Error('无法提取笔记信息')
   }
 
-  // 尝试从 noteDetailMap 中获取笔记详情
   let noteDetail = noteDetailMap[noteId]?.note
 
-  // 如果没有找到，尝试从第一个有效的 key 获取
   if (!noteDetail) {
     const keys = Object.keys(noteDetailMap)
     for (const key of keys) {
@@ -118,25 +81,18 @@ async function fetchVideoInfo(noteId: string, xsecToken: string): Promise<VideoI
     throw new Error('无法提取笔记信息')
   }
 
-  // 检查是否为视频笔记
   const video = noteDetail.video
   if (!video) {
     throw new Error('该笔记不是视频类型')
   }
 
-  // 从 video.media.stream 中提取视频 URL
   let videoUrl = ''
-  
-  // 优先使用 h264
+
   if (video.media?.stream?.h264?.[0]?.masterUrl) {
     videoUrl = video.media.stream.h264[0].masterUrl
-  }
-  // 然后使用 h265
-  else if (video.media?.stream?.h265?.[0]?.masterUrl) {
+  } else if (video.media?.stream?.h265?.[0]?.masterUrl) {
     videoUrl = video.media.stream.h265[0].masterUrl
-  }
-  // 尝试从 backupUrls 获取
-  else if (video.media?.stream?.h264?.[0]?.backupUrls?.[0]) {
+  } else if (video.media?.stream?.h264?.[0]?.backupUrls?.[0]) {
     videoUrl = video.media.stream.h264[0].backupUrls[0]
   }
 
@@ -144,10 +100,8 @@ async function fetchVideoInfo(noteId: string, xsecToken: string): Promise<VideoI
     throw new Error('无法获取视频地址')
   }
 
-  // 获取标题
   const title = noteDetail.title || noteDetail.desc?.substring(0, 50) || '小红书视频'
 
-  // 获取封面
   let coverUrl = ''
   if (noteDetail.imageList?.[0]?.urlDefault) {
     coverUrl = noteDetail.imageList[0].urlDefault
@@ -162,6 +116,56 @@ async function fetchVideoInfo(noteId: string, xsecToken: string): Promise<VideoI
     author: noteDetail.user?.nickname || '',
     platform: 'xiaohongshu'
   }
+}
+
+async function fetchViaHttp(noteId: string, xsecToken: string): Promise<any> {
+  let pageUrl = `https://www.xiaohongshu.com/explore/${noteId}`
+  if (xsecToken) {
+    pageUrl += `?xsec_token=${encodeURIComponent(xsecToken)}&xsec_source=`
+  }
+
+  const response = await axios.get(pageUrl, {
+    headers: HEADERS,
+    timeout: 15000
+  })
+
+  return response.data
+}
+
+async function fetchViaBrowser(noteId: string): Promise<any> {
+  const pageUrl = `https://www.xiaohongshu.com/explore/${noteId}`
+  return await fetchWithBrowser(pageUrl)
+}
+
+function parseHtml(html: string): any {
+  const stateMatch = html.match(
+    /window\.__INITIAL_STATE__\s*=\s*([\s\S]*?)<\/script>/
+  )
+
+  if (!stateMatch) {
+    throw new Error('无法解析页面数据')
+  }
+
+  let rawData = stateMatch[1].trim().replace(/undefined/g, 'null')
+
+  try {
+    return JSON.parse(rawData)
+  } catch {
+    throw new Error('JSON解析失败')
+  }
+}
+
+async function fetchVideoInfo(noteId: string, xsecToken: string): Promise<VideoInfo> {
+  let html: string
+
+  try {
+    html = await fetchViaHttp(noteId, xsecToken)
+  } catch {
+    html = await fetchViaBrowser(noteId)
+  }
+
+  const state = parseHtml(html)
+  return extractVideoFromState(state, noteId)
 }
 
 export const parseXiaohongshu: Parser = {
