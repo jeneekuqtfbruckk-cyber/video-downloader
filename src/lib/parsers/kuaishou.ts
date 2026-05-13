@@ -189,9 +189,14 @@ async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
   try {
     // 先尝试 HTTP 方式
     data = await fetchViaHttp(videoId)
-  } catch {
-    // 失败后使用浏览器方式
-    data = await fetchViaBrowser(videoId)
+  } catch (httpError) {
+    // 失败后尝试浏览器方式
+    try {
+      data = await fetchViaBrowser(videoId)
+    } catch (browserError) {
+      // 浏览器方式也失败，抛出原始 HTTP 错误
+      throw new Error(`快手解析失败: HTTP 方式和浏览器方式均不可用`)
+    }
   }
 
   return extractVideoFromData(data)

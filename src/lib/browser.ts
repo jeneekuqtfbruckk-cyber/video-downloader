@@ -1,11 +1,29 @@
-import { chromium, Browser, BrowserContext } from 'playwright-core'
-
-let browser: Browser | null = null
-let context: BrowserContext | null = null
+let chromium: any = null
+let browser: any = null
+let context: any = null
+let playwrightAvailable = true
 
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
 
-async function getBrowser(): Promise<Browser> {
+async function loadPlaywright(): Promise<boolean> {
+  if (chromium) return true
+  if (!playwrightAvailable) return false
+  
+  try {
+    const pw = await import('playwright-core')
+    chromium = pw.chromium
+    return true
+  } catch {
+    playwrightAvailable = false
+    return false
+  }
+}
+
+async function getBrowser(): Promise<any> {
+  if (!(await loadPlaywright())) {
+    throw new Error('Playwright not available')
+  }
+  
   if (!browser) {
     browser = await chromium.launch({
       headless: true,
@@ -19,7 +37,7 @@ async function getBrowser(): Promise<Browser> {
   return browser
 }
 
-async function getContext(): Promise<BrowserContext> {
+async function getContext(): Promise<any> {
   if (!context) {
     const b = await getBrowser()
     context = await b.newContext({

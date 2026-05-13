@@ -160,8 +160,12 @@ async function fetchVideoInfo(noteId: string, xsecToken: string): Promise<VideoI
 
   try {
     html = await fetchViaHttp(noteId, xsecToken)
-  } catch {
-    html = await fetchViaBrowser(noteId)
+  } catch (httpError) {
+    try {
+      html = await fetchViaBrowser(noteId)
+    } catch (browserError) {
+      throw new Error(`小红书解析失败: HTTP 方式和浏览器方式均不可用`)
+    }
   }
 
   const state = parseHtml(html)
