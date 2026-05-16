@@ -42,6 +42,7 @@ src/
 │   │   ├── youtube.ts       # YouTube 解析器
 │   │   ├── xiaohongshu.ts   # 小红书解析器
 │   │   ├── weibo.ts         # 微博解析器
+│   │   ├── snapwc.ts        # snapwc.com 备用解析器
 │   │   ├── a_bogus.js       # 抖音签名算法
 │   │   └── x_bogus.js       # 抖音签名算法
 │   ├── cache.ts             # 内存缓存（仅开发）
@@ -98,11 +99,11 @@ export interface Parser {
 | 平台 | 状态 | 说明 |
 |------|------|------|
 | B站 | ✅ 可用 | 直接 API 调用（api.bilibili.com） |
-| YouTube | ⚠️ 部分可用 | oEmbed + ytInitialPlayerResponse，可能被反爬 |
-| 抖音 | ⚠️ 部分可用 | 依赖 isolated-vm 执行签名算法 |
-| 快手 | ⚠️ 部分可用 | GraphQL API（visionVideoDetail），需浏览器环境或有效 cookie |
-| 小红书 | ⚠️ 部分可用 | SSR 数据格式不稳定，需要 xsec_token |
-| 微博 | ⚠️ 部分可用 | 两套 API，videoId 格式不统一 |
+| YouTube | ✅ 可用 | 通过 snapwc.com 解析 |
+| 抖音 | ✅ 可用 | 通过 snapwc.com 解析 |
+| 快手 | ✅ 可用 | 通过 snapwc.com 解析 |
+| 小红书 | ✅ 可用 | 通过 snapwc.com 解析 |
+| 微博 | ✅ 可用 | 移动端 API（m.weibo.cn） |
 
 ## 开发进度
 

@@ -5,6 +5,7 @@ import { parseBilibili } from './bilibili'
 import { parseYoutube } from './youtube'
 import { parseXiaohongshu } from './xiaohongshu'
 import { parseWeibo } from './weibo'
+import { parseViaSnapwc } from './snapwc'
 
 const parsers: Parser[] = [
   parseDouyin,
@@ -72,10 +73,19 @@ export async function parseVideo(
   }
 
   try {
+    // 先尝试原始解析器
     return await parser.parse(url)
   } catch (error) {
     const message = error instanceof Error ? error.message : '解析失败'
-    throw new Error(`解析失败: ${message}`)
+    console.log(`原始解析器失败: ${message}，尝试 snapwc.com`)
+    
+    try {
+      // 失败后尝试 snapwc.com
+      return await parseViaSnapwc(url)
+    } catch (snapwcError) {
+      const snapwcMessage = snapwcError instanceof Error ? snapwcError.message : 'snapwc.com 解析失败'
+      throw new Error(`解析失败: ${message} (snapwc.com: ${snapwcMessage})`)
+    }
   }
 }
 
